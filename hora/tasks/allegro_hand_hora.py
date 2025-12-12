@@ -291,6 +291,10 @@ class AllegroHandHora(VecTask):
         self.proprio_hist_buf[env_ids] = 0
         self.at_reset_buf[env_ids] = 1
 
+        new_axes = torch.rand((len(env_ids), 3)) * 2 - 1
+        new_axes /= torch.linalg.norm(new_axes, dim=1, keepdim=True)
+        self.rot_axis_buf[env_ids] = new_axes.to(self.rot_axis_buf.device)
+
     def compute_observations(self):
         self._refresh_gym()
         # deal with normal observation, do sliding window
@@ -312,14 +316,13 @@ class AllegroHandHora(VecTask):
         self.obs_buf_lag_history[at_reset_env_ids, :, 16:32] = self.allegro_hand_dof_pos[at_reset_env_ids].unsqueeze(1)
         t_buf = (self.obs_buf_lag_history[:, -3:].reshape(self.num_envs, -1)).clone()
 
-        self.obs_buf[:, :t_buf.shape[1]] = t_buf
+        self.obs_buf[:] = torch.concat([t_buf, self.rot_axis_buf], dim=-1)
         self.at_reset_buf[at_reset_env_ids] = 0
 
         self.proprio_hist_buf[:] = self.obs_buf_lag_history[:, -self.prop_hist_len:].clone()
         self._update_priv_buf(env_id=range(self.num_envs), name='obj_position', value=self.object_pos.clone())
 
     def compute_reward(self, actions):
-        self.rot_axis_buf[:, -1] = -1
         # pose diff penalty
         pose_diff_penalty = ((self.allegro_hand_dof_pos - self.init_pose_buf) ** 2).sum(-1)
         # work and torque penalty

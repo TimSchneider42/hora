@@ -6,7 +6,7 @@ on_evaluation: False
 env:
   # environment basic
   numEnvs: ${resolve_default:16384,${...num_envs}}
-  numObservations: 96
+  numObservations: 99
   numActions: 16
   envSpacing: 0.25
 
