@@ -4,3 +4,5 @@ omegaconf
 gym
 tensorboard
 tensorboardx
+torch
+torchvision
