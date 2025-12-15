@@ -9,88 +9,24 @@
 # Licence under BSD 3-Clause License
 # https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/
 # --------------------------------------------------------
+import abc
+import multiprocessing.pool
+import sys
+from abc import ABC
+from typing import Dict, Any, Tuple, Iterable, Callable
+
+import gym
+import numpy as np
+import torch
+from gym import spaces
 
 from isaacgym import gymapi
 
-import abc
-import sys
-import gym
-import torch
-import numpy as np
-
-from abc import ABC
-from gym import spaces
-from typing import Dict, Any, Tuple
-
 
 class Env(ABC):
-    def __init__(
-        self,
-        config: Dict[str, Any],
-        sim_device: str,
-        graphics_device_id: int,
-        headless: bool,
-    ):
-        """Initialise the env.
-
-        Args:
-            config: the configuration dictionary.
-            sim_device: the device to simulate physics on. eg. 'cuda:0' or 'cpu'
-            graphics_device_id: the device ID to render with.
-            headless: Set to False to disable viewer rendering.
-        """
-
-        split_device = sim_device.split(":")
-        self.device_type = split_device[0]
-        self.device_id = int(split_device[1]) if len(split_device) > 1 else 0
-
-        self.device = "cpu"
-        if config["sim"]["use_gpu_pipeline"]:
-            if self.device_type.lower() == "cuda" or self.device_type.lower() == "gpu":
-                self.device = "cuda" + ":" + str(self.device_id)
-            else:
-                print(
-                    "GPU Pipeline can only be used with GPU simulation. Forcing CPU Pipeline."
-                )
-                config["sim"]["use_gpu_pipeline"] = False
-
-        self.rl_device = config.get("rl_device", "cuda:0")
-
-        # Rendering
-        # if training in a headless mode
-        self.headless = headless
-
-        enable_camera_sensors = config.get("enableCameraSensors", False)
-        self.graphics_device_id = graphics_device_id
-        if not enable_camera_sensors and self.headless:
-            self.graphics_device_id = -1
-
-        self.num_environments = config["env"]["numEnvs"]
-        self.num_observations = config["env"]["numObservations"]
-        self.num_actions = config["env"]["numActions"]
-
-        self.obs_space = spaces.Box(
-            np.ones(self.num_obs, dtype=np.float32) * -np.Inf,
-            np.ones(self.num_obs, dtype=np.float32) * np.Inf,
-        )
-        self.act_space = spaces.Box(
-            np.ones(self.num_actions, dtype=np.float32) * -1.0,
-            np.ones(self.num_actions, dtype=np.float32) * 1.0,
-        )
-
-        self.clip_obs = config["env"].get("clipObservations", np.Inf)
-        self.clip_actions = config["env"].get("clipActions", np.Inf)
-
-        # controller
-        controller_config = config["env"]["controller"]
-        self.torque_control = controller_config["torque_control"]
-        self.p_gain = controller_config["pgain"]
-        self.d_gain = controller_config["dgain"]
-        self.control_freq_inv = controller_config["controlFrequencyInv"]
-
-    @abc.abstractmethod
-    def _allocate_buffers(self):
-        """Create torch buffers for observations, rewards, actions dones and any additional data."""
+    observation_space: gym.Space
+    action_space: gym.Space
+    num_envs: int
 
     @abc.abstractmethod
     def step(
@@ -113,34 +49,137 @@ class Env(ABC):
         """
 
     @property
-    def observation_space(self) -> gym.Space:
-        """Get the environment's observation space."""
-        return self.obs_space
-
-    @property
-    def action_space(self) -> gym.Space:
-        """Get the environment's action space."""
-        return self.act_space
-
-    @property
-    def num_envs(self) -> int:
-        """Get the number of environments."""
-        return self.num_environments
-
-    @property
-    def num_acts(self) -> int:
-        """Get the number of actions in the environment."""
-        return self.num_actions
-
-    @property
-    def num_obs(self) -> int:
+    def num_observations(self) -> int:
         """Get the number of observations in the environment."""
-        return self.num_observations
+        return self.observation_space.shape[0]
+
+    @property
+    def num_actions(self) -> int:
+        return self.action_space.shape[0]
+
+    def close(self):
+        pass
+
+
+def _env_process(
+    env_factory: Callable[[], Env],
+    input_queue: multiprocessing.Queue,
+    output_queue: multiprocessing.Queue,
+):
+    try:
+        env = env_factory()
+        output_queue.put((env.observation_space, env.action_space, env.num_envs))
+        terminate = False
+        while not terminate:
+            cmd = input_queue.get()
+            if cmd is None:
+                terminate = True
+            if cmd == "reset":
+                output_queue.put(env.reset())
+            else:
+                output_queue.put(env.step(cmd))
+    except Exception as e:
+        output_queue.put(e)
+    finally:
+        return None
+
+
+class AsyncEnvGroup(Env):
+    def __init__(self, env_factories: Iterable[Callable[[], Env]]):
+        self._input_queues = [multiprocessing.Queue() for _ in env_factories]
+        self._output_queues = [multiprocessing.Queue() for _ in env_factories]
+        self._processes = [
+            multiprocessing.Process(target=_env_process, args=(factory, iq, oq))
+            for factory, iq, oq in zip(
+                env_factories, self._input_queues, self._output_queues
+            )
+        ]
+        for p in self._processes:
+            p.start()
+        res = self._get_res()
+        self._num_envs = [r[2] for r in res]
+        self._action_space = res[0][1]
+        self._observation_space = res[0][0]
+        self._weights = np.array(self._num_envs, dtype=np.float32)
+        self._weights /= np.sum(self._weights)
+
+    def _split_tensor(self, tensor: torch.Tensor) -> Tuple[torch.Tensor]:
+        splits = []
+        start = 0
+        for num_envs in self._num_envs:
+            end = start + num_envs
+            splits.append(tensor[start:end])
+            start = end
+        return tuple(splits)
+
+    def _join_tensors(self, tensors: Iterable[torch.Tensor]) -> torch.Tensor:
+        return torch.cat(list(tensors), dim=0)
+
+    def _join_dicts(
+        self, dicts: Iterable[Dict[str, torch.Tensor]]
+    ) -> Dict[str, torch.Tensor]:
+        return {k: self._join_tensors([r[k] for r in dicts]) for k in dicts[0].keys()}
+
+    def _join_extras(self, extras: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+        joined = {}
+        for k in extras[0].keys():
+            values = [r[k] for r in extras]
+            if values[0].ndim > 0:
+                joined[k] = self._join_tensors(values)
+            else:
+                joined[k] = torch.sum(
+                    torch.tensor(values) * torch.from_numpy(self._weights)
+                )
+        return joined
+
+    def step(
+        self, actions: torch.Tensor
+    ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
+        for q, a in zip(self._input_queues, self._split_tensor(actions)):
+            q.put(a)
+        obs, rew, reset, extra = zip(*self._get_res())
+        return (
+            self._join_dicts(obs),
+            self._join_tensors(rew),
+            self._join_tensors(reset),
+            self._join_extras(extra),
+        )
+
+    def reset(self) -> Dict[str, torch.Tensor]:
+        for q in self._input_queues:
+            q.put("reset")
+        return self._join_dicts(self._get_res())
+
+    def _get_res(self):
+        res = [q.get() for q in self._output_queues]
+        for r in res:
+            if isinstance(r, Exception):
+                self.close()
+                raise r
+        return res
+
+    @property
+    def observation_space(self):
+        return self._observation_space
+
+    @property
+    def action_space(self):
+        return self._action_space
+
+    @property
+    def num_envs(self):
+        return sum(self._num_envs)
+
+    def close(self):
+        for q in self._input_queues:
+            q.put(None)
+        for p in self._processes:
+            p.join()
 
 
 class VecTask(Env):
 
-    def __init__(self, config, sim_device, graphics_device_id, headless):
+    def __init__(self, config, device_id: int, headless):
         """Initialise the `VecTask`.
 
         Args:
@@ -149,7 +188,35 @@ class VecTask(Env):
             graphics_device_id: the device ID to render with.
             headless: Set to False to disable viewer rendering.
         """
-        super().__init__(config, sim_device, graphics_device_id, headless)
+        self.device_id = device_id
+        self.device = f"cuda:{device_id}"
+
+        self.rl_device = config.get("rl_device", "cuda:0")
+
+        # Rendering
+        # if training in a headless mode
+        self.headless = headless
+
+        self.num_envs = config["env"]["numEnvs"]
+
+        self.observation_space = spaces.Box(
+            np.ones(config["env"]["numObservations"], dtype=np.float32) * -np.Inf,
+            np.ones(config["env"]["numObservations"], dtype=np.float32) * np.Inf,
+        )
+        self.action_space = spaces.Box(
+            np.ones(config["env"]["numActions"], dtype=np.float32) * -1.0,
+            np.ones(config["env"]["numActions"], dtype=np.float32) * 1.0,
+        )
+
+        self.clip_obs = config["env"].get("clipObservations", np.Inf)
+        self.clip_actions = config["env"].get("clipActions", np.Inf)
+
+        # controller
+        controller_config = config["env"]["controller"]
+        self.torque_control = controller_config["torque_control"]
+        self.p_gain = controller_config["pgain"]
+        self.d_gain = controller_config["dgain"]
+        self.control_freq_inv = controller_config["controlFrequencyInv"]
 
         self.sim_params = self._parse_sim_params(
             config["physics_engine"], config["sim"]
@@ -209,10 +276,12 @@ class VecTask(Env):
         """
         # allocate buffers
         self.obs_buf = torch.zeros(
-            (self.num_envs, self.num_obs), device=self.device, dtype=torch.float
+            (self.num_envs, self.num_observations),
+            device=self.device,
+            dtype=torch.float,
         )
         self.obs_buf_lag_history = torch.zeros(
-            (self.num_envs, 80, (self.num_obs - 3) // 3),
+            (self.num_envs, 80, (self.num_observations - 3) // 3),
             device=self.device,
             dtype=torch.float,
         )
@@ -255,7 +324,7 @@ class VecTask(Env):
         self.up_axis_idx = self.set_sim_params_up_axis(self.sim_params, self.up_axis)
         self.sim = self.gym.create_sim(
             self.device_id,
-            self.graphics_device_id,
+            self.device_id,
             self.physics_engine,
             self.sim_params,
         )

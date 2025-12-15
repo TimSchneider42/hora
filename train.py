@@ -10,21 +10,22 @@
 # https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/
 # --------------------------------------------------------
 
-import isaacgym
-
-import os
-import hydra
 import datetime
-from termcolor import cprint
-from omegaconf import DictConfig, OmegaConf
-from hydra.utils import to_absolute_path
+import os
 
+import hydra
+from hydra.utils import to_absolute_path
+from omegaconf import DictConfig, OmegaConf
+from termcolor import cprint
+
+from hora.tasks import isaacgym_task_map
+from hora.tasks.base.vec_task import AsyncEnvGroup
+from hora.utils.misc import set_np_formatting, set_seed, git_hash, git_diff_config
+from hora.utils.reformat import omegaconf_to_dict
 from hora.algo.ppo.ppo import PPO
 from hora.algo.padapt.padapt import ProprioAdapt
-from hora.tasks import isaacgym_task_map
-from hora.utils.reformat import omegaconf_to_dict, print_dict
-from hora.utils.misc import set_np_formatting, set_seed, git_hash, git_diff_config
 
+import torch
 
 ## OmegaConf & Hydra Config
 
@@ -51,43 +52,57 @@ def main(config: DictConfig):
     config.seed = set_seed(config.seed)
 
     cprint("Start Building the Environment", "green", attrs=["bold"])
-    env = isaacgym_task_map[config.task_name](
-        config=omegaconf_to_dict(config.task),
-        sim_device=config.sim_device,
-        graphics_device_id=config.graphics_device_id,
-        headless=config.headless,
-    )
-
-    output_dif = os.path.join("outputs", config.train.ppo.output_name)
-    os.makedirs(output_dif, exist_ok=True)
-    agent = eval(config.train.algo)(env, output_dif, full_config=config)
-    if config.test:
-        agent.restore_test(config.train.load_path)
-        agent.test()
-    else:
-        date = str(datetime.datetime.now().strftime("%m%d%H"))
-        print(git_diff_config("./"))
-        os.system(f"git diff HEAD > {output_dif}/gitdiff.patch")
-        with open(
-            os.path.join(output_dif, f"config_{date}_{git_hash()}.yaml"), "w"
-        ) as f:
-            f.write(OmegaConf.to_yaml(config))
-
-        # check whether execute train by mistake:
-        best_ckpt_path = os.path.join(
-            "outputs",
-            config.train.ppo.output_name,
-            "stage1_nn" if config.train.algo == "PPO" else "stage2_nn",
-            "best.pth",
+    device_ids = config.device_ids
+    if device_ids is None:
+        device_ids = list(range(torch.cuda.device_count()))
+    print(f"Using CUDA device(s) {', '.join(map(str, device_ids))}")
+    envs = [
+        lambda: isaacgym_task_map[config.task_name](
+            config=omegaconf_to_dict(config.task),
+            device_id=i,
+            headless=config.headless,
         )
-        # if os.path.exists(best_ckpt_path):
-        #     user_input = input(
-        #         f'are you intentionally going to overwrite files in {config.train.ppo.output_name}, type yes to continue \n')
-        #     if user_input != 'yes':
-        #         exit()
+        for i in device_ids
+    ]
 
-        agent.restore_train(config.train.load_path)
-        agent.train()
+    if len(envs) > 1 or True:
+        env = AsyncEnvGroup(envs)
+    else:
+        env = envs[0]()
+
+    try:
+        output_dif = os.path.join("outputs", config.train.ppo.output_name)
+        os.makedirs(output_dif, exist_ok=True)
+        agent = eval(config.train.algo)(env, output_dif, full_config=config)
+        if config.test:
+            agent.restore_test(config.train.load_path)
+            agent.test()
+        else:
+            date = str(datetime.datetime.now().strftime("%m%d%H"))
+            print(git_diff_config("./"))
+            os.system(f"git diff HEAD > {output_dif}/gitdiff.patch")
+            with open(
+                os.path.join(output_dif, f"config_{date}_{git_hash()}.yaml"), "w"
+            ) as f:
+                f.write(OmegaConf.to_yaml(config))
+
+            # check whether execute train by mistake:
+            best_ckpt_path = os.path.join(
+                "outputs",
+                config.train.ppo.output_name,
+                "stage1_nn" if config.train.algo == "PPO" else "stage2_nn",
+                "best.pth",
+            )
+            # if os.path.exists(best_ckpt_path):
+            #     user_input = input(
+            #         f'are you intentionally going to overwrite files in {config.train.ppo.output_name}, type yes to continue \n')
+            #     if user_input != 'yes':
+            #         exit()
+
+            agent.restore_train(config.train.load_path)
+            agent.train()
+    finally:
+        env.close()
 
 
 if __name__ == "__main__":

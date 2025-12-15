@@ -30,7 +30,7 @@ class PPO(object):
         self.ppo_config = full_config.train.ppo
         # ---- build environment ----
         self.env = env
-        self.num_actors = self.ppo_config["num_actors"]
+        self.num_actors = env.num_envs
         action_space = self.env.action_space
         self.actions_num = action_space.shape[0]
         self.actions_low = (

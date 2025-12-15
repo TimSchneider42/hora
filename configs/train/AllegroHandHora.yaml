@@ -13,7 +13,6 @@ ppo:
   normalize_input: True
   normalize_value: True
   value_bootstrap: True
-  num_actors: ${...task.env.numEnvs}
   normalize_advantage: True
   gamma: 0.99
   tau: 0.95

@@ -6,10 +6,9 @@
 # --------------------------------------------------------
 
 import os
-import torch
 import numpy as np
-from isaacgym import gymtorch
 from isaacgym import gymapi
+from isaacgym import gymtorch
 from isaacgym.torch_utils import (
     to_torch,
     unscale,
@@ -22,10 +21,11 @@ from isaacgym.torch_utils import (
 from glob import glob
 from hora.utils.misc import tprint
 from .base.vec_task import VecTask
+import torch
 
 
 class AllegroHandHora(VecTask):
-    def __init__(self, config, sim_device, graphics_device_id, headless):
+    def __init__(self, config, device_id, headless):
         self.config = config
         # before calling init in VecTask, need to do
         # 1. setup randomization
@@ -51,7 +51,7 @@ class AllegroHandHora(VecTask):
             "obj_com": (6, 9),
         }
 
-        super().__init__(config, sim_device, graphics_device_id, headless)
+        super().__init__(config, device_id, headless)
 
         self.debug_viz = self.config["env"]["enableDebugVis"]
         self.max_episode_length = self.config["env"]["episodeLength"]
