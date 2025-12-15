@@ -39,7 +39,7 @@ def git_hash():
 
 
 def git_diff_config(name):
-    cmd = f'git diff --unified=0 {name}'
+    cmd = f"git diff --unified=0 {name}"
     ret = subprocess.check_output(shlex.split(cmd)).strip()
     if isinstance(ret, bytes):
         ret = ret.decode()
@@ -47,17 +47,24 @@ def git_diff_config(name):
 
 
 def set_np_formatting():
-    """ formats numpy print """
-    np.set_printoptions(edgeitems=30, infstr='inf',
-                        linewidth=4000, nanstr='nan', precision=2,
-                        suppress=False, threshold=10000, formatter=None)
+    """formats numpy print"""
+    np.set_printoptions(
+        edgeitems=30,
+        infstr="inf",
+        linewidth=4000,
+        nanstr="nan",
+        precision=2,
+        suppress=False,
+        threshold=10000,
+        formatter=None,
+    )
 
 
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 

@@ -27,7 +27,7 @@ pip install -e .
 Note, there may be some errors about `ERROR: pip's dependency resolver does not currently take into account all the packages that are installed.` This is mainly caused by `dm-control` which can be ignored at this stage. As long as you can run some isaacgym examples, you are good to go:
 
 ```
-# this example can only be ran with a monitor 
+# this example can only be ran with a monitor
 python examples/joint_monkey.py
 ```
 

@@ -18,7 +18,7 @@ configs/
     AllegroHandGrasp.yaml       # for hydra interface use, values are not useful
     PublicAllegroHandHora.yaml  # Training PPO for the public allegro hand
     PublicAllegroHandGrasp.yaml # for hydra interface use, values are not useful
-    
+
 hora/                           # main library for in-hand object rotation
   algo/                         # optimization and deployment algorithms
     deploy/

@@ -16,8 +16,8 @@ from sensor_msgs.msg import JointState
 
 class Allegro(object):
 
-    def __init__(self, hand_topic_prefix='allegroHand_0', num_joints=16):
-        """ Simple python interface to the Allegro Hand.
+    def __init__(self, hand_topic_prefix="allegroHand_0", num_joints=16):
+        """Simple python interface to the Allegro Hand.
 
         The AllegroClient is a simple python interface to an allegro
         robot hand.  It enables you to command the hand directly through
@@ -48,27 +48,26 @@ class Allegro(object):
         # velocity), joint state (subscribing), and envelop torque. Note that
         # we can change the hand topic prefix (for example, to allegroHand_0)
         # instead of remapping it at the command line.
-        hand_topic_prefix=hand_topic_prefix.rstrip('/')
-        topic_grasp_command = '{}/lib_cmd'.format(hand_topic_prefix)
-        topic_joint_command = '{}/joint_cmd'.format(hand_topic_prefix)
-        topic_joint_state = '{}/joint_states'.format(hand_topic_prefix)
-        topic_envelop_torque = '{}/envelop_torque'.format(hand_topic_prefix)
+        hand_topic_prefix = hand_topic_prefix.rstrip("/")
+        topic_grasp_command = "{}/lib_cmd".format(hand_topic_prefix)
+        topic_joint_command = "{}/joint_cmd".format(hand_topic_prefix)
+        topic_joint_state = "{}/joint_states".format(hand_topic_prefix)
+        topic_envelop_torque = "{}/envelop_torque".format(hand_topic_prefix)
 
         # Publishers for above topics.
-        self.pub_grasp = rospy.Publisher(
-            topic_grasp_command, String, queue_size=10)
-        self.pub_joint = rospy.Publisher(
-            topic_joint_command, JointState, queue_size=10)
+        self.pub_grasp = rospy.Publisher(topic_grasp_command, String, queue_size=10)
+        self.pub_joint = rospy.Publisher(topic_joint_command, JointState, queue_size=10)
         self.pub_envelop_torque = rospy.Publisher(
-            topic_envelop_torque, Float32, queue_size=1)
-        rospy.Subscriber(topic_joint_state, JointState,
-                         self._joint_state_callback)
+            topic_envelop_torque, Float32, queue_size=1
+        )
+        rospy.Subscriber(topic_joint_state, JointState, self._joint_state_callback)
         self._joint_state = None
 
         self._num_joints = num_joints
 
-        rospy.loginfo('Allegro Client start with hand topic: {}'.format(
-            hand_topic_prefix))
+        rospy.loginfo(
+            "Allegro Client start with hand topic: {}".format(hand_topic_prefix)
+        )
 
         # "Named" grasps are those provided by the bhand library. These can be
         # commanded directly and the hand will execute them. The keys are more
@@ -76,21 +75,21 @@ class Allegro(object):
         # allegro controller side. Multiple strings mapping to the same value
         # are allowed.
         self._named_grasps_mappings = {
-            'home': 'home',
-            'ready': 'ready',
-            'three_finger_grasp': 'grasp_3',
-            'three finger grasp': 'grasp_3',
-            'four_finger_grasp': 'grasp_4',
-            'four finger grasp': 'grasp_4',
-            'index_pinch': 'pinch_it',
-            'index pinch': 'pinch_it',
-            'middle_pinch': 'pinch_mt',
-            'middle pinch': 'pinch_mt',
-            'envelop': 'envelop',
-            'off': 'off',
-            'gravity_compensation': 'gravcomp',
-            'gravity compensation': 'gravcomp',
-            'gravity': 'gravcomp'
+            "home": "home",
+            "ready": "ready",
+            "three_finger_grasp": "grasp_3",
+            "three finger grasp": "grasp_3",
+            "four_finger_grasp": "grasp_4",
+            "four finger grasp": "grasp_4",
+            "index_pinch": "pinch_it",
+            "index pinch": "pinch_it",
+            "middle_pinch": "pinch_mt",
+            "middle pinch": "pinch_mt",
+            "envelop": "envelop",
+            "off": "off",
+            "gravity_compensation": "gravcomp",
+            "gravity compensation": "gravcomp",
+            "gravity": "gravcomp",
         }
 
     def disconnect(self):
@@ -101,7 +100,7 @@ class Allegro(object):
         Note that we don't actually 'disconnect', so you could technically
         continue sending other commands after this.
         """
-        self.command_hand_configuration('off')
+        self.command_hand_configuration("off")
 
     def _joint_state_callback(self, data):
         self._joint_state = data
@@ -121,21 +120,25 @@ class Allegro(object):
 
         # Check that the desired pose can have len() applied to it, and that
         # the number of dimensions is the same as the number of hand joints.
-        if (not hasattr(desired_pose, '__len__') or
-                len(desired_pose) != self._num_joints):
-            rospy.logwarn('Desired pose must be a {}-d array: got {}.'
-                          .format(self._num_joints, desired_pose))
+        if (
+            not hasattr(desired_pose, "__len__")
+            or len(desired_pose) != self._num_joints
+        ):
+            rospy.logwarn(
+                "Desired pose must be a {}-d array: got {}.".format(
+                    self._num_joints, desired_pose
+                )
+            )
             return False
 
         msg = JointState()  # Create and publish
         try:
             msg.position = desired_pose
             self.pub_joint.publish(msg)
-            rospy.logdebug('Published desired pose.')
+            rospy.logdebug("Published desired pose.")
             return True
         except rospy.exceptions.ROSSerializationException:
-            rospy.logwarn('Incorrect type for desired pose: {}.'.format(
-                desired_pose))
+            rospy.logwarn("Incorrect type for desired pose: {}.".format(desired_pose))
             return False
 
     def command_joint_torques(self, desired_torques):
@@ -154,25 +157,31 @@ class Allegro(object):
         # and that the number of dimensions is the same as the number of
         # joints. This prevents passing singletons or incorrectly-shaped lists
         # to the message creation (which does no checking).
-        if (not hasattr(desired_torques, '__len__') or
-                len(desired_torques) != self._num_joints):
-            rospy.logwarn('Desired torques must be a {}-d array: got {}.'
-                          .format(self._num_joints, desired_torques))
+        if (
+            not hasattr(desired_torques, "__len__")
+            or len(desired_torques) != self._num_joints
+        ):
+            rospy.logwarn(
+                "Desired torques must be a {}-d array: got {}.".format(
+                    self._num_joints, desired_torques
+                )
+            )
             return False
 
         msg = JointState()  # Create and publish
         try:
             msg.effort = desired_torques
             self.pub_joint.publish(msg)
-            rospy.logdebug('Published desired torques.')
+            rospy.logdebug("Published desired torques.")
             return True
         except rospy.exceptions.ROSSerializationException:
-            rospy.logwarn('Incorrect type for desired torques: {}.'.format(
-                desired_torques))
+            rospy.logwarn(
+                "Incorrect type for desired torques: {}.".format(desired_torques)
+            )
             return False
 
     def poll_joint_position(self, wait=False):
-        """ Get the current joint positions of the hand.
+        """Get the current joint positions of the hand.
 
         :param wait: If true, waits for a 'fresh' state reading.
         :return: Joint positions, or None if none have been received.
@@ -206,12 +215,11 @@ class Allegro(object):
         if hand_config in self._named_grasps_mappings:
             # Look up conversion of string -> msg
             msg = String(self._named_grasps_mappings[hand_config])
-            rospy.logdebug('Commanding grasp: {}'.format(msg.data))
+            rospy.logdebug("Commanding grasp: {}".format(msg.data))
             self.pub_grasp.publish(msg)
             return True
         else:
-            rospy.logwarn('Unable to command unknown grasp {}'.format(
-                hand_config))
+            rospy.logwarn("Unable to command unknown grasp {}".format(hand_config))
             return False
 
     def list_hand_configurations(self):
