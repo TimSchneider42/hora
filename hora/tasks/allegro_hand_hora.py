@@ -133,6 +133,12 @@ class AllegroHandHora(VecTask):
         self.rot_axis_buf = torch.zeros(
             (self.num_envs, 3), device=self.device, dtype=torch.float
         )
+        self.rot_axis_std_lb = torch.zeros(
+            (self.num_envs,), device=self.device, dtype=torch.float
+        )
+        self.rot_axis_std_ub = torch.ones(
+            (self.num_envs,), device=self.device, dtype=torch.float
+        )
 
         # useful buffers
         self.object_rot_prev = self.object_rot.clone()
@@ -380,6 +386,21 @@ class AllegroHandHora(VecTask):
         )
 
     def reset_idx(self, env_ids):
+        lower_lim_log = -6
+        upper_lim_log = 0
+        rot_axis_std_ub_log = (
+            torch.rand(len(env_ids), device=self.rot_axis_std_ub.device)
+            * (upper_lim_log - lower_lim_log)
+            + lower_lim_log
+        )
+        rot_axis_lb_log = (
+            torch.rand(len(env_ids), device=self.rot_axis_std_ub.device)
+            * (rot_axis_std_ub_log - lower_lim_log)
+            + lower_lim_log
+        )
+        self.rot_axis_std_ub[env_ids] = 10**rot_axis_std_ub_log
+        self.rot_axis_std_lb[env_ids] = 10**rot_axis_lb_log
+
         if self.randomize_pd_gains:
             self.p_gain[env_ids] = torch_rand_float(
                 self.randomize_p_gain_lower,
@@ -578,6 +599,16 @@ class AllegroHandHora(VecTask):
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(env_ids) > 0:
             self.reset_idx(env_ids)
+
+        rot_axis_std = (
+            torch.rand(self.num_envs, device=self.device)
+            * (self.rot_axis_std_ub - self.rot_axis_std_lb)
+            + self.rot_axis_std_lb
+        )
+        rot_axis_noise = torch.randn_like(self.rot_axis_buf) * rot_axis_std[:, None]
+        self.rot_axis_buf += rot_axis_noise
+        self.rot_axis_buf /= torch.linalg.norm(self.rot_axis_buf, dim=1, keepdim=True)
+
         self.compute_observations()
 
         if self.viewer and self.debug_viz:
