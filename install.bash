@@ -2,10 +2,9 @@
 set -e
 
 eval "$(conda shell.bash hook)"
-conda create -n hora python=3.8
+conda create -n hora python=3.8 -y
 conda activate hora
 
-conda install pytorch==1.10.1 torchvision==0.11.2 torchaudio==0.10.1 cudatoolkit=10.2 -c pytorch
 pip install -r requirements.txt
 
 wget "https://drive.usercontent.google.com/download?id=1StaRl_hzYFYbJegQcyT7-yjgutc6C7F9&export=download&confirm=t" -O isaac4.tar.gz
@@ -18,7 +17,7 @@ unzip data.zip -d cache/
 rm data.zip
 
 wget "https://drive.usercontent.google.com/download?id=17fr40KQcUyFXz4W1ejuLTzRqP-Qu9EPS&export=download&confirm=t" -O data.zip
-unzip data.zip -d outputs/AllegroHandHora/hora_v0.0.2
+unzip data.zip -d outputs/AllegroHandHora/
 rm data.zip
 
 ENV_PATH="$CONDA_PREFIX"

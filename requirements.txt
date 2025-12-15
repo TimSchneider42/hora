@@ -6,3 +6,4 @@ tensorboard
 tensorboardx
 torch
 torchvision
+numpy==1.20.3
