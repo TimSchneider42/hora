@@ -19,4 +19,4 @@ python -u train.py task=AllegroHandHora headless=True seed=0 \
   task.env.object.type=cylinder_default \
   train.ppo.priv_info=True train.ppo.proprio_adapt=True \
   train.ppo.output_name=AllegroHandHora/s2_${SLURM_JOB_ID} \
-  checkpoint=outputs/AllegroHandHora/"$1"/stage1_nn/best.pth
+  checkpoint=outputs/AllegroHandHora/"$1"/stage1_nn/best.pth "${@:2}"
