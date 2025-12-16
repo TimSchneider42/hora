@@ -9,8 +9,11 @@
 #SBATCH --partition=gpu
 #SBATCH -C rtx&vram24gb
 
+eval "$(conda shell.bash hook)"
+conda activate hora
+
 cd ..
-conda run -n hora python train.py task=AllegroHandHora headless=True seed=0 \
+python train.py task=AllegroHandHora headless=True seed=0 \
   task.env.forceScale=2 task.env.randomForceProbScalar=0.25 \
   train.algo=PPO \
   task.env.object.type=cylinder_default \
