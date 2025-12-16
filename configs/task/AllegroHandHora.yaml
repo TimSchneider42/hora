@@ -97,6 +97,7 @@ sim:
   physx:
     num_threads: ${....num_threads}
     solver_type: ${....solver_type}
+    use_gpu: true
     num_position_iterations: 8
     num_velocity_iterations: 0
     max_gpu_contact_pairs: 8388608 # 8*1024*1024
