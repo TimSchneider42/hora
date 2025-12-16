@@ -34,7 +34,7 @@ ppo:
   # snapshot setting
   save_best_after: 0
   save_frequency: 500
-  max_agent_steps: 1500000000
+  max_agent_steps: 100_000_000_000
   # hora setting
   priv_info: False
   priv_info_dim: 9
