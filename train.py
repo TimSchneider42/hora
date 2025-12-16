@@ -93,11 +93,12 @@ def main(config: DictConfig):
                 "stage1_nn" if config.train.algo == "PPO" else "stage2_nn",
                 "best.pth",
             )
-            # if os.path.exists(best_ckpt_path):
-            #     user_input = input(
-            #         f'are you intentionally going to overwrite files in {config.train.ppo.output_name}, type yes to continue \n')
-            #     if user_input != 'yes':
-            #         exit()
+            if os.path.exists(best_ckpt_path):
+                user_input = input(
+                    f"are you intentionally going to overwrite files in {config.train.ppo.output_name}, type yes to continue \n"
+                )
+                if user_input != "yes":
+                    exit()
 
             agent.restore_train(config.train.load_path)
             agent.train()
