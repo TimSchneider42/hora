@@ -57,9 +57,9 @@ def main(config: DictConfig):
         device_ids = list(range(torch.cuda.device_count()))
     print(f"Using CUDA device(s) {', '.join(map(str, device_ids))}")
     envs = [
-        lambda: isaacgym_task_map[config.task_name](
+        lambda _i=i: isaacgym_task_map[config.task_name](
             config=omegaconf_to_dict(config.task),
-            device_id=i,
+            device_id=_i,
             headless=config.headless,
         )
         for i in device_ids
