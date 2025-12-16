@@ -18,4 +18,5 @@ python train.py task=AllegroHandHora headless=True seed=0 \
   train.algo=PPO \
   task.env.object.type=cylinder_default \
   train.ppo.priv_info=True train.ppo.proprio_adapt=False \
-  train.ppo.output_name=AllegroHandHora/s1_${SLURM_JOB_ID}
+  train.ppo.output_name=AllegroHandHora/s1_${SLURM_JOB_ID} \
+  num_envs=65536
