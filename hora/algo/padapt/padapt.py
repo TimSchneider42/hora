@@ -24,7 +24,7 @@ class ProprioAdapt(object):
         self.ppo_config = full_config.train.ppo
         # ---- build environment ----
         self.env = env
-        self.num_actors = self.ppo_config["num_actors"]
+        self.num_actors = env.num_envs
         self.observation_space = self.env.observation_space
         self.obs_shape = self.observation_space.shape
         self.action_space = self.env.action_space
