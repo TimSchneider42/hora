@@ -54,7 +54,7 @@ def mk_env(i, config):
             **omegaconf_to_dict(config.task),
             "rl_device": "cpu",
         },
-        device_id=0,
+        device_id=i,
         render_device_id=i,
         headless=config.headless,
     )
