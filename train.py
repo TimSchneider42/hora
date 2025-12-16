@@ -65,7 +65,7 @@ def main(config: DictConfig):
         for i in device_ids
     ]
 
-    if len(envs) > 1 or True:
+    if len(envs) > 1:
         env = AsyncEnvGroup(envs)
     else:
         env = envs[0]()
