@@ -10,6 +10,8 @@ env:
   numActions: 16
   envSpacing: 0.25
 
+  constant_axis: false
+
   episodeLength: 400
   enableDebugVis: False
   aggregateMode: 1

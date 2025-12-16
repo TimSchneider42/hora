@@ -600,14 +600,17 @@ class AllegroHandHora(VecTask):
         if len(env_ids) > 0:
             self.reset_idx(env_ids)
 
-        rot_axis_std = (
-            torch.rand(self.num_envs, device=self.device)
-            * (self.rot_axis_std_ub - self.rot_axis_std_lb)
-            + self.rot_axis_std_lb
-        )
-        rot_axis_noise = torch.randn_like(self.rot_axis_buf) * rot_axis_std[:, None]
-        self.rot_axis_buf += rot_axis_noise
-        self.rot_axis_buf /= torch.linalg.norm(self.rot_axis_buf, dim=1, keepdim=True)
+        if not self.config["env"]["constant_axis"]:
+            rot_axis_std = (
+                torch.rand(self.num_envs, device=self.device)
+                * (self.rot_axis_std_ub - self.rot_axis_std_lb)
+                + self.rot_axis_std_lb
+            )
+            rot_axis_noise = torch.randn_like(self.rot_axis_buf) * rot_axis_std[:, None]
+            self.rot_axis_buf += rot_axis_noise
+            self.rot_axis_buf /= torch.linalg.norm(
+                self.rot_axis_buf, dim=1, keepdim=True
+            )
 
         self.compute_observations()
 
