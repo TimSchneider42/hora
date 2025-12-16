@@ -733,16 +733,16 @@ class AllegroHandHora(VecTask):
             )
 
     def reset(self):
-        super().reset()
-        self.obs_dict["priv_info"] = self.priv_info_buf.to(self.rl_device)
-        self.obs_dict["proprio_hist"] = self.proprio_hist_buf.to(self.rl_device)
-        return self.obs_dict
+        obs = super().reset()
+        obs["priv_info"] = self.priv_info_buf.to(self.rl_device)
+        obs["proprio_hist"] = self.proprio_hist_buf.to(self.rl_device)
+        return obs
 
     def step(self, actions):
-        super().step(actions)
-        self.obs_dict["priv_info"] = self.priv_info_buf.to(self.rl_device)
-        self.obs_dict["proprio_hist"] = self.proprio_hist_buf.to(self.rl_device)
-        return self.obs_dict, self.rew_buf, self.reset_buf, self.extras
+        obs, rew, reset, extras = super().step(actions)
+        obs["priv_info"] = self.priv_info_buf.to(self.rl_device)
+        obs["proprio_hist"] = self.proprio_hist_buf.to(self.rl_device)
+        return obs, rew, reset, extras
 
     def update_low_level_control(self):
         previous_dof_pos = self.allegro_hand_dof_pos.clone()

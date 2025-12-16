@@ -60,7 +60,10 @@ def main(config: DictConfig):
             set_seed(config.seed + 1 + i)
 
             return isaacgym_task_map[config.task_name](
-                config=omegaconf_to_dict(config.task),
+                config={
+                    **omegaconf_to_dict(config.task),
+                    "rl_device": config.rl_device,
+                },
                 device_id=i,
                 headless=config.headless,
             )
