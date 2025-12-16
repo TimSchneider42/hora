@@ -4,7 +4,6 @@
 # Copyright (c) 2022 Haozhi Qi
 # Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
-
 import os
 import numpy as np
 from isaacgym import gymapi
@@ -26,7 +25,7 @@ from pathlib import Path
 
 
 class AllegroHandHora(VecTask):
-    def __init__(self, config, device_id, headless):
+    def __init__(self, config, device_id, render_device_id, headless):
         self.config = config
         # before calling init in VecTask, need to do
         # 1. setup randomization
@@ -52,7 +51,7 @@ class AllegroHandHora(VecTask):
             "obj_com": (6, 9),
         }
 
-        super().__init__(config, device_id, headless)
+        super().__init__(config, device_id, render_device_id, headless)
 
         self.debug_viz = self.config["env"]["enableDebugVis"]
         self.max_episode_length = self.config["env"]["episodeLength"]
@@ -448,8 +447,8 @@ class AllegroHandHora(VecTask):
         object_indices = torch.unique(self.object_indices[env_ids]).to(torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim,
-            gymtorch.unwrap_tensor(self.root_state_tensor),
-            gymtorch.unwrap_tensor(object_indices),
+            gymtorch.unwrap_tensor(torch.ones_like(self.root_state_tensor)),
+            gymtorch.unwrap_tensor(torch.ones_like(object_indices)),
             len(object_indices),
         )
         hand_indices = self.hand_indices[env_ids].to(torch.int32)

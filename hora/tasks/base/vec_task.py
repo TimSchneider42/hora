@@ -26,7 +26,7 @@ from isaacgym import gymapi
 
 class VecTask(Env):
 
-    def __init__(self, config, device_id: int, headless):
+    def __init__(self, config, device_id: int, render_device_id, headless):
         """Initialise the `VecTask`.
 
         Args:
@@ -81,6 +81,7 @@ class VecTask(Env):
         torch._C._jit_set_profiling_executor(False)  # noqa
 
         self.gym = gymapi.acquire_gym()
+        self._render_device_id = render_device_id
         self._allocate_buffers()
         # create envs, sim and viewer
         self.create_sim()
@@ -171,7 +172,7 @@ class VecTask(Env):
         self.up_axis_idx = self.set_sim_params_up_axis(self.sim_params, self.up_axis)
         self.sim = self.gym.create_sim(
             self.device_id,
-            self.device_id,
+            self._render_device_id,
             self.physics_engine,
             self.sim_params,
         )

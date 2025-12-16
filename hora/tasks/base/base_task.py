@@ -11,7 +11,7 @@
 # --------------------------------------------------------
 import abc
 import gym
-import multiprocessing.pool
+import multiprocessing as mp
 import numpy as np
 import sys
 from abc import ABC
@@ -20,6 +20,8 @@ from typing import Dict, Any, Tuple, Iterable, Callable
 from queue import Empty
 import traceback
 from typing import TYPE_CHECKING
+import time
+import os
 
 if TYPE_CHECKING:
     import torch
@@ -29,6 +31,7 @@ class Env(ABC):
     observation_space: gym.Space
     action_space: gym.Space
     num_envs: int
+    device: str
 
     @abc.abstractmethod
     def step(
@@ -65,10 +68,23 @@ class Env(ABC):
         pass
 
 
+def to_cpu(v):
+    import torch
+
+    if isinstance(v, torch.Tensor):
+        return v.cpu()
+    elif isinstance(v, tuple):
+        return tuple(to_cpu(v) for v in v)
+    elif isinstance(v, dict):
+        return {k: to_cpu(v) for k, v in v.items()}
+    else:
+        raise NotImplementedError()
+
+
 def _env_process(
     env_factory: Callable[[], Env],
-    input_queue: multiprocessing.Queue,
-    output_queue: multiprocessing.Queue,
+    input_queue: mp.Queue,
+    output_queue: mp.Queue,
 ):
     try:
         env = env_factory()
@@ -79,46 +95,56 @@ def _env_process(
             if cmd is None:
                 terminate = True
             elif cmd == "reset":
-                output_queue.put(env.reset())
+                output_queue.put(to_cpu(env.reset()))
             else:
-                output_queue.put(env.step(cmd))
+                output_queue.put(to_cpu(env.step(cmd.to(env.device))))
     except Exception as e:
+        output_queue.put(e)
         traceback.print_exc()
-        output_queue.put((e, e.__traceback__))
 
 
 class AsyncEnvGroup(Env):
-    def __init__(self, env_factories: Iterable[Callable[[], Env]]):
-        self._input_queues = [multiprocessing.Queue() for _ in env_factories]
-        self._output_queues = [multiprocessing.Queue() for _ in env_factories]
-        self._processes = [
-            multiprocessing.Process(target=_env_process, args=(factory, iq, oq))
-            for factory, iq, oq in zip(
-                env_factories, self._input_queues, self._output_queues
-            )
-        ]
-        for p in self._processes:
+    def __init__(
+        self, env_factories: Iterable[Tuple[Callable[[], Env], int]], device: str
+    ):
+        env_factories = list(env_factories)
+        ctx = mp.get_context("spawn")
+        self._input_queues = [ctx.Queue() for _ in env_factories]
+        self._output_queues = [ctx.Queue() for _ in env_factories]
+        self._processes = []
+        for (factory, device_id), iq, oq in zip(
+            env_factories, self._input_queues, self._output_queues
+        ):
+            # os.environ["CUDA_VISIBLE_DEVICES"] = str(device_id)
+            p = ctx.Process(target=_env_process, args=(factory, iq, oq))
             p.start()
+            self._processes.append(p)
+            # del os.environ["CUDA_VISIBLE_DEVICES"]
         res = self._get_res()
         self._num_envs = [r[2] for r in res]
         self._action_space = res[0][1]
         self._observation_space = res[0][0]
-        self._weights = np.array(self._num_envs, dtype=np.float32)
-        self._weights /= np.sum(self._weights)
+        import torch
+
+        self._weights = torch.tensor(self._num_envs, dtype=torch.float, device=device)
+        self._weights /= self._weights.sum()
+        print(self._weights.device)
+        self.device = device
+        self._env_devices = [f"cuda:{d}" for _, d in env_factories]
 
     def _split_tensor(self, tensor: "torch.Tensor") -> Tuple["torch.Tensor"]:
         splits = []
         start = 0
-        for num_envs in self._num_envs:
+        for num_envs, dev in zip(self._num_envs, self._env_devices):
             end = start + num_envs
-            splits.append(tensor[start:end])
+            splits.append(tensor[start:end].to(dev))
             start = end
         return tuple(splits)
 
     def _join_tensors(self, tensors: Iterable["torch.Tensor"]) -> "torch.Tensor":
         import torch
 
-        return torch.cat(list(tensors), dim=0)
+        return torch.cat([t.to(self.device) for t in tensors], dim=0)
 
     def _join_dicts(
         self, dicts: Iterable[Dict[str, "torch.Tensor"]]
@@ -135,7 +161,10 @@ class AsyncEnvGroup(Env):
                 joined[k] = self._join_tensors(values)
             else:
                 joined[k] = torch.sum(
-                    torch.tensor(values) * torch.from_numpy(self._weights)
+                    torch.tensor(
+                        [v.to(self.device) for v in values], device=self.device
+                    )
+                    * self._weights
                 )
         return joined
 
@@ -166,11 +195,9 @@ class AsyncEnvGroup(Env):
                 if r is None:
                     try:
                         res[i] = self._output_queues[i].get(timeout=0.1)
-                        if isinstance(res[i], tuple) and isinstance(
-                            res[i][0], Exception
-                        ):
+                        if isinstance(res[i], Exception):
                             self.close()
-                            raise res[i][0].with_traceback(res[i][1])
+                            raise res[i]
                     except Empty:
                         pass
         return res

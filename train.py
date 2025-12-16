@@ -9,9 +9,11 @@
 # Licence under BSD 3-Clause License
 # https://github.com/NVIDIA-Omniverse/IsaacGymEnvs/
 # --------------------------------------------------------
+import os
 
 import datetime
-import os
+from functools import partial
+import multiprocessing as mp
 
 import hydra
 from hydra.utils import to_absolute_path
@@ -35,6 +37,29 @@ OmegaConf.register_new_resolver(
 )
 
 
+def get_device_ids():
+    import torch
+
+    return list(range(torch.cuda.device_count()))
+
+
+def mk_env(i, config):
+    # This ugly hack is because isaacgym crashes if any device other than 0 is selected
+    from hora.tasks.task_map import isaacgym_task_map
+
+    set_seed(config.seed + 1 + i)
+
+    return isaacgym_task_map[config.task_name](
+        config={
+            **omegaconf_to_dict(config.task),
+            "rl_device": "cpu",
+        },
+        device_id=0,
+        render_device_id=i,
+        headless=config.headless,
+    )
+
+
 @hydra.main(config_name="config", config_path="configs")
 def main(config: DictConfig):
     if config.checkpoint:
@@ -46,36 +71,16 @@ def main(config: DictConfig):
     cprint("Start Building the Environment", "green", attrs=["bold"])
     device_ids = config.device_ids
     if device_ids is None:
-        # TODO
-        device_ids = list(range(1, 8))
+        with mp.Pool(1) as pool:
+            device_ids = pool.apply(get_device_ids)
     rl_device_id = int(config.rl_device.split(":")[-1])
     print(
         f"Using CUDA device(s) {', '.join(map(str, device_ids))} for data collection and {rl_device_id} for RL"
     )
 
-    def mk_env_factory(i):
-        def mk_env():
-            from hora.tasks.task_map import isaacgym_task_map
+    envs = [partial(mk_env, i, config) for i in device_ids]
 
-            set_seed(config.seed + 1 + i)
-
-            return isaacgym_task_map[config.task_name](
-                config={
-                    **omegaconf_to_dict(config.task),
-                    "rl_device": config.rl_device,
-                },
-                device_id=i,
-                headless=config.headless,
-            )
-
-        return mk_env
-
-    envs = [mk_env_factory(i) for i in device_ids]
-
-    if len(envs) > 1:
-        env = AsyncEnvGroup(envs)
-    else:
-        env = envs[0]()
+    env = AsyncEnvGroup(zip(envs, device_ids), config.rl_device)
 
     from hora.algo.ppo.ppo import PPO
     from hora.algo.padapt.padapt import ProprioAdapt
