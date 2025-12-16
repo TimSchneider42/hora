@@ -18,14 +18,9 @@ from hydra.utils import to_absolute_path
 from omegaconf import DictConfig, OmegaConf
 from termcolor import cprint
 
-from hora.tasks import isaacgym_task_map
-from hora.tasks.base.vec_task import AsyncEnvGroup
+from hora.tasks.base.base_task import AsyncEnvGroup
 from hora.utils.misc import set_np_formatting, set_seed, git_hash, git_diff_config
 from hora.utils.reformat import omegaconf_to_dict
-from hora.algo.ppo.ppo import PPO
-from hora.algo.padapt.padapt import ProprioAdapt
-
-import torch
 
 ## OmegaConf & Hydra Config
 
@@ -48,28 +43,42 @@ def main(config: DictConfig):
     # set numpy formatting for printing only
     set_np_formatting()
 
-    # sets seed. if seed is -1 will pick a random one
-    config.seed = set_seed(config.seed)
-
     cprint("Start Building the Environment", "green", attrs=["bold"])
     device_ids = config.device_ids
     if device_ids is None:
-        device_ids = list(range(torch.cuda.device_count()))
-    print(f"Using CUDA device(s) {', '.join(map(str, device_ids))}")
-    envs = [
-        lambda: isaacgym_task_map[config.task_name](
-            config=omegaconf_to_dict(config.task),
-            device_id=i,
-            headless=config.headless,
-        )
-        for i in device_ids
-    ]
+        # TODO
+        device_ids = list(range(1, 8))
+    rl_device_id = int(config.rl_device.split(":")[-1])
+    print(
+        f"Using CUDA device(s) {', '.join(map(str, device_ids))} for data collection and {rl_device_id} for RL"
+    )
 
-    if len(envs) > 1 or True:
+    def mk_env_factory(i):
+        def mk_env():
+            from hora.tasks.task_map import isaacgym_task_map
+
+            set_seed(config.seed + 1 + i)
+
+            return isaacgym_task_map[config.task_name](
+                config=omegaconf_to_dict(config.task),
+                device_id=i,
+                headless=config.headless,
+            )
+
+        return mk_env
+
+    envs = [mk_env_factory(i) for i in device_ids]
+
+    if len(envs) > 1:
         env = AsyncEnvGroup(envs)
     else:
         env = envs[0]()
 
+    from hora.algo.ppo.ppo import PPO
+    from hora.algo.padapt.padapt import ProprioAdapt
+
+    # sets seed. if seed is -1 will pick a random one
+    config.seed = set_seed(config.seed)
     try:
         output_dif = os.path.join("outputs", config.train.ppo.output_name)
         os.makedirs(output_dif, exist_ok=True)

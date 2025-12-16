@@ -11,7 +11,6 @@
 # --------------------------------------------------------
 
 import os
-import torch
 import shlex
 import random
 import subprocess
@@ -61,6 +60,8 @@ def set_np_formatting():
 
 
 def set_seed(seed):
+    import torch
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -84,7 +85,7 @@ class AverageScalarMeter(object):
         size = values.size()[0]
         if size == 0:
             return
-        new_mean = torch.mean(values.float(), dim=0).cpu().numpy().item()
+        new_mean = values.float().mean(dim=0).cpu().numpy().item()
         size = np.clip(size, 0, self.window_size)
         old_size = min(self.window_size - size, self.current_size)
         size_sum = old_size + size
