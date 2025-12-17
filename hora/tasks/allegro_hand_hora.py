@@ -512,21 +512,21 @@ class AllegroHandHora(VecTask):
         )
         cur_tar_buf = self.cur_targets[:, None]
 
-        contact_forces_local = quat_apply(
-            quat_conjugate(self.finger_tip_rot), self.finger_tip_contact_forces
-        )
-        contact_dir = -contact_forces_local / (
-            torch.linalg.norm(contact_forces_local, dim=-1, keepdims=True) + 1e-6
-        )
-        contact_dir += (
-            torch.rand(contact_dir.shape, device=self.device) * 2.0 - 1.0
-        ) * self.contact_dir_noise_scale
+        concat_lst = [cur_obs_buf, cur_tar_buf]
+        if self.config["env"]["observe_contacts"]:
+            contact_forces_local = quat_apply(
+                quat_conjugate(self.finger_tip_rot), self.finger_tip_contact_forces
+            )
+            contact_dir = -contact_forces_local / (
+                torch.linalg.norm(contact_forces_local, dim=-1, keepdims=True) + 1e-6
+            )
+            contact_dir += (
+                torch.rand(contact_dir.shape, device=self.device) * 2.0 - 1.0
+            ) * self.contact_dir_noise_scale
 
-        s = contact_dir.shape
-        cur_obs_buf = torch.cat(
-            [cur_obs_buf, cur_tar_buf, contact_dir.reshape((s[0], 1, s[-2] * s[-1]))],
-            dim=-1,
-        )
+            s = contact_dir.shape
+            concat_lst.append(contact_dir.reshape((s[0], 1, s[-2] * s[-1])))
+        cur_obs_buf = torch.cat(concat_lst, dim=-1)
         self.obs_buf_lag_history[:] = torch.cat([prev_obs_buf, cur_obs_buf], dim=1)
 
         # refill the initialized buffers
