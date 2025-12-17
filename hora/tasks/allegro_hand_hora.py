@@ -447,8 +447,8 @@ class AllegroHandHora(VecTask):
         object_indices = torch.unique(self.object_indices[env_ids]).to(torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim,
-            gymtorch.unwrap_tensor(torch.ones_like(self.root_state_tensor)),
-            gymtorch.unwrap_tensor(torch.ones_like(object_indices)),
+            gymtorch.unwrap_tensor(self.root_state_tensor),
+            gymtorch.unwrap_tensor(object_indices),
             len(object_indices),
         )
         hand_indices = self.hand_indices[env_ids].to(torch.int32)
