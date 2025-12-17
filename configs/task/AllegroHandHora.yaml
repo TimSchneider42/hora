@@ -40,7 +40,7 @@ env:
     privInfoDim: 9
 
   reward:
-    angvelClipMin: -0.5
+    angvelClipMin: -.inf
     angvelClipMax: 0.5
     rotateRewardScale: 1.0
     objLinvelPenaltyScale: -0.3
