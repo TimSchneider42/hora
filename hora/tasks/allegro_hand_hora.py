@@ -7,6 +7,8 @@
 
 import os
 import numpy as np
+from gym import spaces
+
 from isaacgym import gymapi
 from isaacgym import gymtorch
 from isaacgym.torch_utils import (
@@ -51,6 +53,16 @@ class AllegroHandHora(VecTask):
             "obj_com": (6, 9),
         }
 
+        obs_count_single_step = 16 * 2
+        if self.config["env"]["observe_contacts"]:
+            obs_count_single_step += 4 * 3
+        obs_count = obs_count_single_step * 3
+        obs_count += 3  # rotation axis
+        self.observation_space = spaces.Box(
+            -np.Inf, np.Inf, shape=(obs_count,), dtype=np.float32
+        )
+        self.action_space = spaces.Box(-1.0, 1.0, shape=(16,))
+
         super().__init__(config, device_id, headless)
 
         self.debug_viz = self.config["env"]["enableDebugVis"]
@@ -67,6 +79,11 @@ class AllegroHandHora(VecTask):
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
         rigid_body_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
         net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
+
+        self.finger_tip_offsets = torch.tensor(
+            [[0.0, 0.0, 0.0368 + 0.0147]] * 3 + [[0.0, 0.0, 0.0368 + 0.0303]],
+            device=self.device,
+        )
 
         # create some wrapper tensors for different slices
         self.allegro_hand_default_dof_pos = torch.zeros(
@@ -482,11 +499,11 @@ class AllegroHandHora(VecTask):
         # deal with normal observation, do sliding window
         prev_obs_buf = self.obs_buf_lag_history[:, 1:].clone()
         joint_noise_matrix = (
-            torch.rand(self.allegro_hand_dof_pos.shape) * 2.0 - 1.0
+            torch.rand(self.allegro_hand_dof_pos.shape, device=self.device) * 2.0 - 1.0
         ) * self.joint_noise_scale
         cur_obs_buf = (
             unscale(
-                joint_noise_matrix.to(self.device) + self.allegro_hand_dof_pos,
+                joint_noise_matrix + self.allegro_hand_dof_pos,
                 self.allegro_hand_dof_lower_limits,
                 self.allegro_hand_dof_upper_limits,
             )
@@ -494,7 +511,22 @@ class AllegroHandHora(VecTask):
             .unsqueeze(1)
         )
         cur_tar_buf = self.cur_targets[:, None]
-        cur_obs_buf = torch.cat([cur_obs_buf, cur_tar_buf], dim=-1)
+
+        contact_forces_local = quat_apply(
+            quat_conjugate(self.finger_tip_rot), self.finger_tip_contact_forces
+        )
+        contact_dir = -contact_forces_local / (
+            torch.linalg.norm(contact_forces_local, dim=-1, keepdims=True) + 1e-6
+        )
+        contact_dir += (
+            torch.rand(contact_dir.shape, device=self.device) * 2.0 - 1.0
+        ) * self.contact_dir_noise_scale
+
+        s = contact_dir.shape
+        cur_obs_buf = torch.cat(
+            [cur_obs_buf, cur_tar_buf, contact_dir.reshape((s[0], 1, s[-2] * s[-1]))],
+            dim=-1,
+        )
         self.obs_buf_lag_history[:] = torch.cat([prev_obs_buf, cur_obs_buf], dim=1)
 
         # refill the initialized buffers
@@ -687,6 +719,20 @@ class AllegroHandHora(VecTask):
                     [1, 0.1, 1],
                 )
 
+                # Forces
+                finger_pos = self.finger_tip_pos[i].cpu().numpy()
+                contact_forces = self.finger_tip_contact_forces[i].cpu().numpy()
+                for j in range(4):
+                    c = contact_forces[j] * 0.1
+                    f = finger_pos[j]
+                    self.gym.add_lines(
+                        self.viewer,
+                        self.envs[i],
+                        1,
+                        [f[0], f[1], f[2], f[0] + c[0], f[1] + c[1], f[2] + c[2]],
+                        [1, 1, 0.1],
+                    )
+
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()
         plane_params.normal = gymapi.Vec3(0.0, 0.0, 1.0)
@@ -780,6 +826,15 @@ class AllegroHandHora(VecTask):
         self.object_rot = self.root_state_tensor[self.object_indices, 3:7]
         self.object_linvel = self.root_state_tensor[self.object_indices, 7:10]
         self.object_angvel = self.root_state_tensor[self.object_indices, 10:13]
+        d = self.gym.get_asset_rigid_body_dict(self.hand_asset)
+        finger_tips = ["link_3.0", "link_7.0", "link_11.0", "link_15.0"]
+        finger_tip_indices = [d[name] for name in finger_tips]
+        self.finger_tip_contact_forces = self.contact_forces[:, finger_tip_indices]
+        self.finger_tip_pos = self.rigid_body_states[:, finger_tip_indices, 0:3]
+        self.finger_tip_rot = self.rigid_body_states[:, finger_tip_indices, 3:7]
+        self.finger_tip_pos += quat_apply(
+            self.finger_tip_rot, self.finger_tip_offsets[None]
+        )
 
     def _setup_domain_rand_config(self, rand_config):
         self.randomize_mass = rand_config["randomizeMass"]
@@ -802,6 +857,7 @@ class AllegroHandHora(VecTask):
         self.randomize_d_gain_lower = rand_config["randomizeDGainLower"]
         self.randomize_d_gain_upper = rand_config["randomizeDGainUpper"]
         self.joint_noise_scale = rand_config["jointNoiseScale"]
+        self.contact_dir_noise_scale = rand_config["contactDirNoiseScale"]
 
     def _setup_priv_option_config(self, p_config):
         self.enable_priv_obj_position = p_config["enableObjPos"]
@@ -878,7 +934,9 @@ class AllegroHandHora(VecTask):
             (num_envs, self.num_env_factors), device=self.device, dtype=torch.float
         )
         self.proprio_hist_buf = torch.zeros(
-            (num_envs, self.prop_hist_len, 32), device=self.device, dtype=torch.float
+            (num_envs, self.prop_hist_len, (self.num_observations - 3) // 3),
+            device=self.device,
+            dtype=torch.float,
         )
 
     def _setup_reward_config(self, r_config):

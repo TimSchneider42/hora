@@ -6,11 +6,10 @@ on_evaluation: False
 env:
   # environment basic
   numEnvs: ${resolve_default:16384,${...num_envs}}
-  numObservations: 99
-  numActions: 16
   envSpacing: 0.25
 
   constant_axis: false
+  observe_contacts: true
 
   episodeLength: 400
   enableDebugVis: False
@@ -72,6 +71,7 @@ env:
     randomizeDGainLower: 0.09
     randomizeDGainUpper: 0.11
     jointNoiseScale: 0.02
+    contactDirNoiseScale: 0.1
 
   privInfo:
     enableObjPos: True

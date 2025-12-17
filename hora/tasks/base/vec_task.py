@@ -199,15 +199,6 @@ class VecTask(Env):
 
         self.num_envs = config["env"]["numEnvs"]
 
-        self.observation_space = spaces.Box(
-            np.ones(config["env"]["numObservations"], dtype=np.float32) * -np.Inf,
-            np.ones(config["env"]["numObservations"], dtype=np.float32) * np.Inf,
-        )
-        self.action_space = spaces.Box(
-            np.ones(config["env"]["numActions"], dtype=np.float32) * -1.0,
-            np.ones(config["env"]["numActions"], dtype=np.float32) * 1.0,
-        )
-
         self.clip_obs = config["env"].get("clipObservations", np.Inf)
         self.clip_actions = config["env"].get("clipActions", np.Inf)
 
