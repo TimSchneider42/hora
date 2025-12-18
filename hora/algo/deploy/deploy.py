@@ -38,7 +38,10 @@ class HardwarePlayer(object):
         self.actions_num = 16
         self.device = "cuda"
 
-        obs_shape = (96,)
+        obs_shape = (99,)
+        dims = 32
+        if config["task"]["env"]["observe_contacts"]:
+            dims += 4 * 3
         net_config = {
             "actions_num": self.actions_num,
             "input_shape": obs_shape,
@@ -47,6 +50,7 @@ class HardwarePlayer(object):
             "priv_info": True,
             "proprio_adapt": True,
             "priv_info_dim": 9,
+            "stage2_in_dims": dims,
         }
 
         self.model = ActorCritic(net_config)
@@ -54,7 +58,7 @@ class HardwarePlayer(object):
         self.model.eval()
         self.running_mean_std = RunningMeanStd(obs_shape).to(self.device)
         self.running_mean_std.eval()
-        self.sa_mean_std = RunningMeanStd((30, 32)).to(self.device)
+        self.sa_mean_std = RunningMeanStd((30, dims)).to(self.device)
         self.sa_mean_std.eval()
         # hand setting
         self.init_pose = [
@@ -143,7 +147,9 @@ class HardwarePlayer(object):
         obses, _ = allegro.poll_joint_position(wait=True)
         obses = _obs_allegro2hora(obses)
         # hardware deployment buffer
-        obs_buf = torch.from_numpy(np.zeros((1, 16 * 3 * 2)).astype(np.float32)).cuda()
+        obs_buf = torch.from_numpy(
+            np.zeros((1, 16 * 3 * 2 + 3)).astype(np.float32)
+        ).cuda()
         proprio_hist_buf = torch.from_numpy(
             np.zeros((1, 30, 16 * 2)).astype(np.float32)
         ).cuda()
@@ -156,6 +162,7 @@ class HardwarePlayer(object):
         cur_obs_buf = unscale(obses, self.allegro_dof_lower, self.allegro_dof_upper)[
             None
         ]
+        obs_buf[:, -3:] = torch.tensor([0, 0, -1]).cuda()
 
         for i in range(3):
             obs_buf[:, i * 32 : i * 32 + 16] = cur_obs_buf.clone()  # joint position
@@ -191,7 +198,7 @@ class HardwarePlayer(object):
             cur_obs_buf = unscale(
                 obses, self.allegro_dof_lower, self.allegro_dof_upper
             )[None]
-            prev_obs_buf = obs_buf[:, 32:].clone()
+            prev_obs_buf = obs_buf[:, :-3][:, 32:].clone()
             obs_buf[:, :64] = prev_obs_buf
             obs_buf[:, 64:80] = cur_obs_buf.clone()
             obs_buf[:, 80:96] = target.clone()
