@@ -26,10 +26,10 @@ class MLP(nn.Module):
 
 
 class ProprioAdaptTConv(nn.Module):
-    def __init__(self):
+    def __init__(self, in_dims: int):
         super(ProprioAdaptTConv, self).__init__()
         self.channel_transform = nn.Sequential(
-            nn.Linear(16 + 16, 32),
+            nn.Linear(in_dims, 32),
             nn.ReLU(inplace=True),
             nn.Linear(32, 32),
             nn.ReLU(inplace=True),
@@ -69,7 +69,7 @@ class ActorCritic(nn.Module):
             self.env_mlp = MLP(units=self.priv_mlp, input_size=kwargs["priv_info_dim"])
 
             if self.priv_info_stage2:
-                self.adapt_tconv = ProprioAdaptTConv()
+                self.adapt_tconv = ProprioAdaptTConv(kwargs["stage2_in_dims"])
 
         self.actor_mlp = MLP(units=self.units, input_size=mlp_input_shape)
         self.value = torch.nn.Linear(out_size, 1)

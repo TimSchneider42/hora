@@ -34,6 +34,9 @@ class ProprioAdapt(object):
         self.priv_info_dim = self.ppo_config["priv_info_dim"]
         self.proprio_adapt = self.ppo_config["proprio_adapt"]
         self.proprio_hist_dim = self.env.prop_hist_len
+        dims = 32
+        if full_config["task"]["env"]["observe_contacts"]:
+            dims += 4 * 3
         # ---- Model ----
         net_config = {
             "actor_units": self.network_config.mlp.units,
@@ -43,15 +46,17 @@ class ProprioAdapt(object):
             "priv_info": self.priv_info,
             "proprio_adapt": self.proprio_adapt,
             "priv_info_dim": self.priv_info_dim,
+            "stage2_in_dims": dims,
         }
         self.model = ActorCritic(net_config)
         self.model.to(self.device)
         self.model.eval()
         self.running_mean_std = RunningMeanStd(self.obs_shape).to(self.device)
         self.running_mean_std.eval()
-        self.sa_mean_std = RunningMeanStd((self.proprio_hist_dim, 32)).to(self.device)
+        self.sa_mean_std = RunningMeanStd((self.proprio_hist_dim, dims)).to(self.device)
         self.sa_mean_std.train()
         # ---- Output Dir ----
+        self.output_dir = output_dir
         self.output_dir = output_dir
         self.nn_dir = os.path.join(self.output_dir, "stage2_nn")
         self.tb_dir = os.path.join(self.output_dir, "stage2_tb")
