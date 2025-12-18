@@ -1,0 +1,3 @@
+[submodule "submodules/digit360"]
+	path = submodules/digit360
+	url = https://github.com/facebookresearch/digit360
